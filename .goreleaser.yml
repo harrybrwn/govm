@@ -1,0 +1,70 @@
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - binary: govm
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/harrybrwn/govm/main.version={{ .Version }}
+      - -X github.com/harrybrwn/govm/main.commit={{ .Commit }}
+      - -X github.com/harrybrwn/govm/main.built={{ .Date }}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - { goos: darwin, goarch: 386 }
+      - { goos: windows, goarch: arm64 }
+
+archives:
+  - replacements:
+      darwin: MacOS
+      linux: Linux
+      windows: Windows
+      386: i386
+      amd64: x86_64
+
+nfpms:
+  - <<: &descr
+      description: Go version manager
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    maintainer: Harry Brown <harrybrown98@gmail.com>
+    replacements:
+      linux: Linux
+      "386": i386
+      amd64: x86_64
+    license: Apache 2.0
+    dependencies: []
+    suggests: []
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/local/bin
+    contents:
+      - src: release/completion/bash/govm
+        dst: /usr/share/bash-completion/completions/govm
+      - src: release/completion/zsh/_govm
+        dst: /usr/share/zsh/vendor-completions/_govm
+      - src: release/completion/fish/govm.fish
+        dst: /usr/share/fish/completions/govm.fish
+    scripts:
+      postinstall: scripts/postinstall.sh
+
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
