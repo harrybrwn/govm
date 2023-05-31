@@ -38,7 +38,9 @@ func run() error {
 const (
 	defaultBase     = "/usr/local"
 	rootDirName     = "go"
-	versionsDirName = "go-versions"
+	versionsDirName = "govm/go-versions"
+	envsDirName     = "govm/envs"
+	buildCacheDir   = "govm/go-build"
 	versionFilename = ".govm"
 )
 
@@ -46,6 +48,7 @@ type Config struct {
 	base           string
 	rootDirName    string // should be a symlink
 	versionDirName string // All the different go versions
+	envsDirName    string
 	currentVersion string
 	versions       []string
 }
@@ -81,6 +84,7 @@ func NewRootCmd() *cobra.Command {
 			base:           defaultBase,
 			rootDirName:    rootDirName,
 			versionDirName: versionsDirName,
+			envsDirName:    envsDirName,
 		}
 	)
 	c := &cobra.Command{
@@ -101,6 +105,7 @@ func NewRootCmd() *cobra.Command {
 		newDownloadCmd(&conf),
 		newRemoveCmd(&conf),
 		newUninstallCmd(&conf),
+		newEnvCmd(&conf),
 	)
 	return c
 }
@@ -202,8 +207,23 @@ func newUninstallCmd(conf *Config) *cobra.Command {
 	}
 }
 
+func newEnvCmd(conf *Config) *cobra.Command {
+	return &cobra.Command{
+		Use:    "env",
+		Short:  "Print shell variables needed to for govm to manage your go versions.",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Fprintf(cmd.OutOrStdout(), "export GOROOT=\"%s\"\n", filepath.Join(conf.base, conf.rootDirName))
+			return nil
+		},
+	}
+}
+
 func use(conf *Config, version string) error {
-	sym := filepath.Join(conf.base, conf.rootDirName)
+	sym, ok := os.LookupEnv("GOROOT")
+	if !ok {
+		sym = filepath.Join(conf.base, conf.rootDirName)
+	}
 	stat, err := os.Lstat(sym)
 	if err != nil && !os.IsNotExist(err) {
 		return err
@@ -224,12 +244,12 @@ func use(conf *Config, version string) error {
 		}
 	} else {
 		if stat.Mode()&os.ModeSymlink == 0 {
-			return fmt.Errorf("%q is not a symlink", sym)
+			return fmt.Errorf("%q is not a symlink, please delete it and use go%s", sym, version)
 		}
 	}
 	inst := conf.installation(version)
 	if !exists(inst) {
-		return fmt.Errorf("version %q not installed", version)
+		return fmt.Errorf("version %q has not been downloaded", version)
 	}
 	if err = os.Remove(sym); err != nil {
 		return err

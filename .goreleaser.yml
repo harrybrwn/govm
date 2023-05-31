@@ -9,9 +9,9 @@ builds:
       - CGO_ENABLED=0
     ldflags:
       - -s -w
-      - -X github.com/harrybrwn/govm/main.version={{ .Version }}
-      - -X github.com/harrybrwn/govm/main.commit={{ .Commit }}
-      - -X github.com/harrybrwn/govm/main.built={{ .Date }}
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.built={{ .Date }}
     goos:
       - linux
       - darwin

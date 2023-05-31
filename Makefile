@@ -1,17 +1,21 @@
-GOFLAGS=-trimpath -ldflags "-s -w"
 NAME=$(shell basename $$PWD)
 SOURCE=$(shell find . -name '*.go')
 COMP=release/completion
+DATE=$(shell date +%FT%T%:z)
+COMMIT=$(shell git rev-parse HEAD)
+VERSION=$(shell git describe --tags)
+LDFLAGS=-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.built=$(DATE)
+GOFLAGS=-trimpath -ldflags "$(LDFLAGS)"
 BIN=release/bin/$(NAME)
 
 build: $(BIN) completion
 
 clean:
-	$(RM) -r release dist
+	$(RM) -r release dist result
 
 completion: $(COMP)/bash/$(NAME) $(COMP)/zsh/_$(NAME) $(COMP)/fish/$(NAME).fish
 
-install: uninstall $(BIN)
+install: $(BIN)
 	sudo install -m 4755 -o root $(BIN) $$GOPATH/bin
 
 uninstall:
