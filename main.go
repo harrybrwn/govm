@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -167,7 +166,7 @@ func newDownloadCmd(conf *Config) *cobra.Command {
 		Short:   "Download a different version of Go",
 		Aliases: []string{"dl"},
 		Args:    cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			v := cleanVersionInput(args[0])
 			err := download(conf, v)
 			if err != nil {
@@ -177,6 +176,13 @@ func newDownloadCmd(conf *Config) *cobra.Command {
 				return use(conf, v)
 			}
 			return nil
+		},
+		ValidArgsFunction: func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+			versions, err := getGoVersions()
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveError
+			}
+			return versions, cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	c.Flags().BoolVar(&alsoUse, "use", alsoUse, "set this version after downloading it")
@@ -286,6 +292,11 @@ func download(conf *Config, version string) error {
 	// return err
 	// }
 
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasSuffix(ct, "gzip") {
+		return fmt.Errorf("expected a gzip response, got %s", ct)
+	}
+
 	unziped, err := gzip.NewReader(resp.Body)
 	if err != nil {
 		return err
@@ -309,22 +320,29 @@ func download(conf *Config, version string) error {
 		switch header.Typeflag {
 		case tar.TypeDir:
 			if err = os.MkdirAll(filename, header.FileInfo().Mode().Perm()); err != nil {
-				return err
+				return fmt.Errorf("failed to create directory %q: %w", filename, err)
 			}
 		case tar.TypeReg:
+			dir := filepath.Dir(filename)
+			// fmt.Println("file:", filename, "dir:", dir, header.FileInfo().Mode().Perm())
+			if !exists(dir) {
+				if err = os.MkdirAll(dir, 0775); err != nil {
+					return fmt.Errorf("failed to create directory %q: %w", dir, err)
+				}
+			}
 			f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, header.FileInfo().Mode().Perm())
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to create regular file %q: %w", filename, err)
 			}
 			n, err := io.Copy(f, tarball)
 			if err != nil {
 				f.Close()
-				return err
+				return fmt.Errorf("failed to copy data to file %q: %w", filename, err)
 			}
 			total += n
 			files++
 			if err = f.Close(); err != nil {
-				return err
+				return fmt.Errorf("failed to close regular file %q: %w", filename, err)
 			}
 		default:
 			return errors.New("don't know how to deal with type flag")
@@ -383,7 +401,7 @@ func newListCmd(conf *Config) *cobra.Command {
 		Use:     "list",
 		Short:   "List all the installed versions of go",
 		Aliases: []string{"ls"},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			names, err := list(filepath.Join(defaultBase, versionsDirName))
 			if err != nil {
 				return err
@@ -537,16 +555,6 @@ func cleanVersionInput(in string) string {
 	}
 	in = strings.TrimPrefix(in, "go")
 	return in
-}
-
-var semvarRe = regexp.MustCompile(`^[0-9]+\.[0-9]+(\.[0-9]+)?$`)
-
-func validateVersion(v string) error {
-	v = cleanVersionInput(v)
-	if !semvarRe.MatchString(v) {
-		return errors.New("bad version string")
-	}
-	return nil
 }
 
 func parseInt(s string) (int, error) {

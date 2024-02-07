@@ -1,11 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"testing"
+	"time"
 )
 
 func TestValidateSemvar(t *testing.T) {
@@ -152,5 +156,21 @@ func TestFetchReleases(t *testing.T) {
 	_, err = io.Copy(os.Stdout, resp.Body)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestGetTagsFromGH(t *testing.T) {
+	cacheFile := filepath.Join(os.TempDir(), ghCacheFile)
+	info, _ := os.Stat(cacheFile)
+	fmt.Println(time.Since(info.ModTime()))
+	tags, err := getGoVersions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pat := regexp.MustCompile(`^go([0-9]+\.?){1,3}$`)
+	for _, tag := range tags {
+		if !pat.Match([]byte(tag)) {
+			t.Errorf("%q is the wrong pattern", tag)
+		}
 	}
 }

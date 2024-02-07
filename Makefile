@@ -7,6 +7,9 @@ VERSION=$(shell git describe --tags)
 LDFLAGS=-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.built=$(DATE)
 GOFLAGS=-trimpath -ldflags "$(LDFLAGS)"
 BIN=release/bin/$(NAME)
+ifeq ($(VERSION),)
+VERSION=v0.0.0
+endif
 
 build: $(BIN) completion
 
@@ -46,4 +49,3 @@ $(COMP)/bash $(COMP)/zsh $(COMP)/fish:
 .PHONY: dist
 dist:
 	goreleaser release --rm-dist --skip-publish --snapshot
-
