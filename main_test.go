@@ -1,15 +1,12 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"testing"
-	"time"
 )
 
 func TestValidateSemvar(t *testing.T) {
@@ -160,9 +157,6 @@ func TestFetchReleases(t *testing.T) {
 }
 
 func TestGetTagsFromGH(t *testing.T) {
-	cacheFile := filepath.Join(os.TempDir(), ghCacheFile)
-	info, _ := os.Stat(cacheFile)
-	fmt.Println(time.Since(info.ModTime()))
 	tags, err := getGoVersions()
 	if err != nil {
 		t.Fatal(err)

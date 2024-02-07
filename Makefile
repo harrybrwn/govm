@@ -29,7 +29,10 @@ install-to: $(BIN) completion
 	cp $(BIN) $(PREFIX)/usr/bin
 	cp $(COMP)/bash/$(NAME)
 
-.PHONY: build clean completion install install-to
+lint:
+	golangci-lint run --disable unused
+
+.PHONY: build clean completion install install-to lint
 
 $(BIN): $(SOURCE)
 	go build $(GOFLAGS) -o $@

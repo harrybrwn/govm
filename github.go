@@ -39,7 +39,7 @@ func getTagsFromGithub() ([]ghTag, error) {
 			Path:   "/repos/golang/go/git/refs/tags",
 		},
 		Header: http.Header{
-			"Accept": {"application/vnd.github+json"},
+			"Accept": []string{"application/vnd.github+json"},
 		},
 	}
 	res, err := http.DefaultClient.Do(&req)
