@@ -1,3 +1,5 @@
+project_name: govm
+
 before:
   hooks:
     - go mod tidy
@@ -17,36 +19,29 @@ builds:
       - darwin
     goarch:
       - amd64
+      - arm
       - arm64
     ignore:
-      - { goos: darwin, goarch: 386 }
+      - { goos: darwin, goarch: "386" }
       - { goos: windows, goarch: arm64 }
 
-archives:
-  - replacements:
-      darwin: MacOS
-      linux: Linux
-      windows: Windows
-      386: i386
-      amd64: x86_64
-
 nfpms:
-  - <<: &descr
-      description: Go version manager
-    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - description: Go version manager
+    # file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    id: packages
+    file_name_template: "{{ .ConventionalFileName }}"
     maintainer: Harry Brown <harrybrown98@gmail.com>
-    replacements:
-      linux: Linux
-      "386": i386
-      amd64: x86_64
     license: Apache 2.0
+    vendor: Harry Brown
     dependencies: []
     suggests: []
     formats:
       - deb
       - rpm
       - apk
-    bindir: /usr/local/bin
+    bindir: /usr/bin
+    prerelease: beta
+    section: utils
     contents:
       - src: release/completion/bash/govm
         dst: /usr/share/bash-completion/completions/govm
@@ -56,6 +51,15 @@ nfpms:
         dst: /usr/share/fish/completions/govm.fish
     scripts:
       postinstall: scripts/postinstall.sh
+    deb:
+      lintian_overrides:
+        - statically-linked-binary
+        - changelog-file-missing-in-native-package
+
+publishers:
+  - name: hrry.me
+    ids:
+      - packages
 
 checksum:
   name_template: 'checksums.txt'

@@ -2,12 +2,63 @@ package main
 
 import (
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"testing"
 )
+
+func TestUse(t *testing.T) {
+	cleanup := resetEnv()
+	defer cleanup()
+	conf := Config{
+		base:           t.TempDir(),
+		rootDirName:    rootDirName,
+		versionDirName: versionsDirName,
+		envsDirName:    envsDirName,
+	}
+	setup(&conf, t)
+	version := "1.0"
+	_ = os.Mkdir(conf.installation(version), 0755)
+	sym := filepath.Join(conf.base, conf.rootDirName)
+	err := use(&conf, version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat, err := os.Stat(sym)
+	if err != nil {
+		t.Fatalf("could not stat file %q: %v", sym, err)
+	}
+	if stat.Mode()&fs.ModeSymlink != 0 {
+		t.Errorf("expected %q to be a symlink", sym)
+	}
+}
+
+func TestDownload(t *testing.T) {
+	cleanup := resetEnv()
+	defer cleanup()
+	conf := Config{
+		base:           t.TempDir(),
+		rootDirName:    rootDirName,
+		versionDirName: versionsDirName,
+		envsDirName:    envsDirName,
+	}
+	setup(&conf, t)
+	version := "1.22.0"
+	err := download(&conf, io.Discard, version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"VERSION", "LICENSE", "README.md", "lib", "api", "pkg"} {
+		f := filepath.Join(conf.installation(version), name)
+		if !exists(f) {
+			t.Errorf("expected %q to exist", f)
+		}
+	}
+}
 
 func TestValidateSemvar(t *testing.T) {
 	t.Run("TestValidateSemvar_Ok", func(t *testing.T) {
@@ -165,6 +216,30 @@ func TestGetTagsFromGH(t *testing.T) {
 	for _, tag := range tags {
 		if !pat.Match([]byte(tag)) {
 			t.Errorf("%q is the wrong pattern", tag)
+		}
+	}
+}
+
+func setup(conf *Config, t *testing.T) {
+	t.Helper()
+	conf.base = t.TempDir()
+	err := os.MkdirAll(filepath.Join(conf.base, conf.versionDirName), 0775)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func resetEnv() func() {
+	values := map[string]string{
+		"GOROOT": "",
+	}
+	for k := range values {
+		values[k] = os.Getenv(k)
+		os.Unsetenv(k)
+	}
+	return func() {
+		for k, v := range values {
+			os.Setenv(k, v)
 		}
 	}
 }

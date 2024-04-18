@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/cobra/doc"
 )
 
 //go:generate make build
@@ -60,7 +61,7 @@ func (c *Config) installation(v string) string {
 }
 
 func (c *Config) list() (VersionList, error) {
-	return list(filepath.Join(defaultBase, versionsDirName))
+	return list(filepath.Join(c.base, c.versionDirName))
 }
 
 func (c *Config) newest() string {
@@ -71,10 +72,12 @@ func (c *Config) newest() string {
 	return l[l.Len()-1].String()
 }
 
+// Variables that are set using ldflags
 var (
 	version string
 	commit  string
 	built   string
+	docCmd  = "false"
 )
 
 func NewRootCmd() *cobra.Command {
@@ -93,10 +96,12 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(*cobra.Command, []string) error {
-			// return validateEnv()
 			return nil
 		},
 		Version: fmt.Sprintf("%s %s built %s", version, commit, built),
+		CompletionOptions: cobra.CompletionOptions{
+			DisableDefaultCmd: docCmd == "true", // disable 'completion' when generating docs
+		},
 	}
 	c.AddCommand(
 		newUseCmd(&conf),
@@ -106,18 +111,10 @@ func NewRootCmd() *cobra.Command {
 		newUninstallCmd(&conf),
 		newEnvCmd(&conf),
 	)
+	if docCmd == "true" {
+		c.AddCommand(newDocCmd(c))
+	}
 	return c
-}
-
-func validateEnv() error {
-	gopath, ok := os.LookupEnv("GOPATH")
-	if !ok {
-		return errors.New("no $GOPATH variable set")
-	}
-	if gopath == "" {
-		return errors.New("bad $GOPATH variable")
-	}
-	return nil
 }
 
 func newUseCmd(conf *Config) *cobra.Command {
@@ -166,9 +163,9 @@ func newDownloadCmd(conf *Config) *cobra.Command {
 		Short:   "Download a different version of Go",
 		Aliases: []string{"dl"},
 		Args:    cobra.MinimumNArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			v := cleanVersionInput(args[0])
-			err := download(conf, v)
+			err := download(conf, cmd.OutOrStdout(), v)
 			if err != nil {
 				return err
 			}
@@ -219,7 +216,11 @@ func newEnvCmd(conf *Config) *cobra.Command {
 		Short:  "Print shell variables needed to for govm to manage your go versions.",
 		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintf(cmd.OutOrStdout(), "export GOROOT=\"%s\"\n", filepath.Join(conf.base, conf.rootDirName))
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"export GOROOT=\"%s\"\n",
+				filepath.Join(conf.base, conf.rootDirName),
+			)
 			return nil
 		},
 	}
@@ -264,8 +265,15 @@ func use(conf *Config, version string) error {
 	return os.Symlink(inst, sym)
 }
 
-func download(conf *Config, version string) error {
-	u, err := url.Parse(fmt.Sprintf("https://golang.org/dl/go%s.%s-%s.tar.gz", version, runtime.GOOS, runtime.GOARCH))
+func download(conf *Config, stdout io.Writer, version string) error {
+	u, err := url.Parse(
+		fmt.Sprintf(
+			"https://golang.org/dl/go%s.%s-%s.tar.gz",
+			version,
+			runtime.GOOS,
+			runtime.GOARCH,
+		),
+	)
 	if err != nil {
 		return err
 	}
@@ -275,7 +283,7 @@ func download(conf *Config, version string) error {
 		done = make(chan struct{})
 	)
 	defer close(done)
-	go spin(done, os.Stdout, "Downloading")
+	go spin(done, stdout, "Downloading")
 	resp, err := c.Do(&http.Request{
 		Method: "GET",
 		URL:    u,
@@ -287,10 +295,6 @@ func download(conf *Config, version string) error {
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("could not find version %q using %q", version, u.String())
 	}
-	// contentLength, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
-	// if err != nil {
-	// return err
-	// }
 
 	ct := resp.Header.Get("Content-Type")
 	if !strings.HasSuffix(ct, "gzip") {
@@ -324,13 +328,16 @@ func download(conf *Config, version string) error {
 			}
 		case tar.TypeReg:
 			dir := filepath.Dir(filename)
-			// fmt.Println("file:", filename, "dir:", dir, header.FileInfo().Mode().Perm())
 			if !exists(dir) {
 				if err = os.MkdirAll(dir, 0775); err != nil {
 					return fmt.Errorf("failed to create directory %q: %w", dir, err)
 				}
 			}
-			f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, header.FileInfo().Mode().Perm())
+			f, err := os.OpenFile(
+				filename,
+				os.O_CREATE|os.O_WRONLY,
+				header.FileInfo().Mode().Perm(),
+			)
 			if err != nil {
 				return fmt.Errorf("failed to create regular file %q: %w", filename, err)
 			}
@@ -347,39 +354,36 @@ func download(conf *Config, version string) error {
 		default:
 			return errors.New("don't know how to deal with type flag")
 		}
-		//fmt.Printf("\n%f %s", float64(total)/float64(contentLength), filename)
 	}
-	fmt.Println("\rdownloaded", files, "files in", time.Since(t))
-	fmt.Println("installed to", installation)
+	fmt.Fprintln(stdout, "\rdownloaded", files, "files in", time.Since(t))
+	fmt.Fprintln(stdout, "installed to", installation)
 	return nil
 }
 
 const loadingInterval = time.Millisecond * 250
 
 func spin(done chan struct{}, w io.Writer, msg string) {
+	var c rune
 	for i := 0; ; i++ {
 		select {
 		case <-done:
 			return
 		default:
-			fmt.Fprintf(w, "\r%s... %c", msg, getLoadingChar(i))
+			switch i % 4 {
+			case 0:
+				c = '|'
+			case 1:
+				c = '/'
+			case 2:
+				c = '-'
+			case 3:
+				c = '\\'
+			default:
+				panic("modulus is broken")
+			}
+			fmt.Fprintf(w, "\r%s... %c", msg, c)
 			time.Sleep(loadingInterval)
 		}
-	}
-}
-
-func getLoadingChar(i int) rune {
-	switch i % 4 {
-	case 0:
-		return '|'
-	case 1:
-		return '/'
-	case 2:
-		return '-'
-	case 3:
-		return '\\'
-	default:
-		panic("modulus is broken")
 	}
 }
 
@@ -396,7 +400,7 @@ func uninstall(conf *Config) (err error) {
 	return nil
 }
 
-func newListCmd(conf *Config) *cobra.Command {
+func newListCmd(*Config) *cobra.Command {
 	c := &cobra.Command{
 		Use:     "list",
 		Short:   "List all the installed versions of go",
@@ -413,6 +417,40 @@ func newListCmd(conf *Config) *cobra.Command {
 		},
 	}
 	return c
+}
+
+func newDocCmd(root *cobra.Command) *cobra.Command {
+	var (
+		stdout = false
+		manDir = "release/man"
+	)
+	c := cobra.Command{
+		Use:    "doc",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			manHead := doc.GenManHeader{
+				Section: "1", // 1 is for shell commands
+			}
+			if stdout {
+				err := doc.GenMan(root, &manHead, os.Stdout)
+				if err != nil {
+					return err
+				}
+			} else {
+				if !exists(manDir) {
+					_ = os.MkdirAll(manDir, 0755)
+				}
+				err := doc.GenManTree(root, &manHead, manDir)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	}
+	c.Flags().BoolVar(&stdout, "stdout", stdout, "write docs to stdout")
+	c.Flags().StringVarP(&manDir, "man-dir", "m", manDir, "directory to write man pages to")
+	return &c
 }
 
 var ErrInvalidVersion = errors.New("invalid version")

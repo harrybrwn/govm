@@ -11,12 +11,13 @@ ifeq ($(VERSION),)
 VERSION=v0.0.0
 endif
 
-build: $(BIN) completion
+build: $(BIN) completion man
 
 clean:
 	$(RM) -r release dist result
 
 completion: $(COMP)/bash/$(NAME) $(COMP)/zsh/_$(NAME) $(COMP)/fish/$(NAME).fish
+man: release/man
 
 install: $(BIN)
 	sudo install -m 4755 -o root $(BIN) $$GOPATH/bin
@@ -32,7 +33,7 @@ install-to: $(BIN) completion
 lint:
 	golangci-lint run --disable unused
 
-.PHONY: build clean completion install install-to lint
+.PHONY: build clean completion man install install-to lint
 
 $(BIN): $(SOURCE)
 	go build $(GOFLAGS) -o $@
@@ -49,6 +50,12 @@ $(COMP)/fish/$(NAME).fish: $(COMP)/fish $(BIN)
 $(COMP)/bash $(COMP)/zsh $(COMP)/fish:
 	mkdir -p $@
 
+release/bin/_tmp: $(SOURCE)
+	go build -ldflags "$(LDFLAGS) -X main.docCmd=true" -o $@
+
+release/man: release/bin/_tmp
+	$< doc --man-dir $@
+
 .PHONY: dist
 dist:
-	goreleaser release --rm-dist --skip-publish --snapshot
+	goreleaser release --clean --skip=publish --snapshot
