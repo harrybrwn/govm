@@ -7,13 +7,15 @@ before:
 
 builds:
   - binary: govm
+    main: ./cmd/govm
     env:
       - CGO_ENABLED=0
     ldflags:
       - -s -w
-      - -X main.version={{ .Version }}
-      - -X main.commit={{ .Commit }}
-      - -X main.built={{ .Date }}
+      - -X github.com/harrybrwn/govm/cmd/govm/cli.version={{ .Version }}
+      - -X github.com/harrybrwn/govm/cmd/govm/cli.commit={{ .Commit }}
+      - -X github.com/harrybrwn/govm/cmd/govm/cli.built={{ .Date }}
+      - "-X github.com/harrybrwn/govm/cmd/govm/cli.completion=false"
     goos:
       - linux
       - darwin
@@ -49,6 +51,8 @@ nfpms:
         dst: /usr/share/zsh/vendor-completions/_govm
       - src: release/completion/fish/govm.fish
         dst: /usr/share/fish/completions/govm.fish
+      - src: release/man/
+        dst: /usr/share/man/man1/
     scripts:
       postinstall: scripts/postinstall.sh
     deb:
