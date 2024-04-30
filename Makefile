@@ -3,10 +3,15 @@ SOURCE=$(shell find . -name '*.go')
 COMP=release/completion
 DATE=$(shell date +%FT%T%:z)
 COMMIT=$(shell git rev-parse HEAD)
-VERSION=$(shell git describe --tags)
-LDFLAGS=-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.built=$(DATE)
+VERSION=$(shell git describe --tags 2>/dev/null)
+LDFLAGS=-s -w \
+	-X github.com/harrybrwn/govm/cmd/govm/cli.version=$(VERSION) \
+	-X github.com/harrybrwn/govm/cmd/govm/cli.commit=$(COMMIT) \
+	-X github.com/harrybrwn/govm/cmd/govm/cli.built=$(DATE) \
+	-X github.com/harrybrwn/govm/cmd/govm/cli.completion=false
 GOFLAGS=-trimpath -ldflags "$(LDFLAGS)"
 BIN=release/bin/$(NAME)
+GEN=release/bin/gen
 ifeq ($(VERSION),)
 VERSION=v0.0.0
 endif
@@ -36,25 +41,23 @@ lint:
 .PHONY: build clean completion man install install-to lint
 
 $(BIN): $(SOURCE)
-	go build $(GOFLAGS) -o $@
+	go build $(GOFLAGS) -o $@ ./cmd/$(NAME)
 
-$(COMP)/zsh/_$(NAME): $(COMP)/zsh $(BIN)
-	$(BIN) completion zsh > $@
+$(GEN): $(SOURCE)
+	go build -o $@ ./cmd/gen
 
-$(COMP)/bash/$(NAME): $(COMP)/bash $(BIN)
-	$(BIN) completion bash > $@
-
-$(COMP)/fish/$(NAME).fish: $(COMP)/fish $(BIN)
-	$(BIN) completion fish > $@
+$(COMP)/zsh/_$(NAME): $(COMP)/zsh $(GEN)
+	$(GEN) -completion zsh
+$(COMP)/bash/$(NAME): $(COMP)/bash $(GEN)
+	$(GEN) -completion bash
+$(COMP)/fish/$(NAME).fish: $(COMP)/fish $(GEN)
+	$(GEN) -completion fish
 
 $(COMP)/bash $(COMP)/zsh $(COMP)/fish:
 	mkdir -p $@
 
-release/bin/_tmp: $(SOURCE)
-	go build -ldflags "$(LDFLAGS) -X main.docCmd=true" -o $@
-
-release/man: release/bin/_tmp
-	$< doc --man-dir $@
+release/man: release/bin/gen
+	$< -man-dir $@
 
 .PHONY: dist
 dist:

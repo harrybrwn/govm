@@ -1,4 +1,4 @@
-package main
+package govm
 
 import (
 	"encoding/json"
@@ -89,7 +89,7 @@ func writeGithubCache(filename string, tags []ghTag) error {
 	return err
 }
 
-func getGoVersions() ([]string, error) {
+func GetGoVersions() ([]string, error) {
 	tmp := os.TempDir()
 	cacheFile := filepath.Join(tmp, ghCacheFile)
 	info, err := os.Stat(cacheFile)

@@ -1,4 +1,4 @@
-package main
+package govm
 
 import (
 	"io"
@@ -14,17 +14,16 @@ import (
 func TestUse(t *testing.T) {
 	cleanup := resetEnv()
 	defer cleanup()
-	conf := Config{
-		base:           t.TempDir(),
-		rootDirName:    rootDirName,
-		versionDirName: versionsDirName,
-		envsDirName:    envsDirName,
+	m := Manager{
+		Base:        t.TempDir(),
+		GoDir:       "go",
+		VersionsDir: "govm/go-versions",
 	}
-	setup(&conf, t)
+	setup(&m, t)
 	version := "1.0"
-	_ = os.Mkdir(conf.installation(version), 0755)
-	sym := filepath.Join(conf.base, conf.rootDirName)
-	err := use(&conf, version)
+	_ = os.Mkdir(m.installation(version), 0755)
+	sym := filepath.Join(m.Base, m.GoDir)
+	err := m.Use(version)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,20 +39,19 @@ func TestUse(t *testing.T) {
 func TestDownload(t *testing.T) {
 	cleanup := resetEnv()
 	defer cleanup()
-	conf := Config{
-		base:           t.TempDir(),
-		rootDirName:    rootDirName,
-		versionDirName: versionsDirName,
-		envsDirName:    envsDirName,
+	m := Manager{
+		Base:        t.TempDir(),
+		GoDir:       "go",
+		VersionsDir: "govm/go-versions",
 	}
-	setup(&conf, t)
+	setup(&m, t)
 	version := "1.22.0"
-	err := download(&conf, io.Discard, version)
+	err := m.Download(io.Discard, version)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"VERSION", "LICENSE", "README.md", "lib", "api", "pkg"} {
-		f := filepath.Join(conf.installation(version), name)
+		f := filepath.Join(m.installation(version), name)
 		if !exists(f) {
 			t.Errorf("expected %q to exist", f)
 		}
@@ -143,7 +141,6 @@ func TestVersion_Cmp(t *testing.T) {
 			t.Fatalf("%v should equal %v", v1, v)
 		}
 	}
-
 	base := Version{2, 18, 5}
 	for _, v := range []Version{
 		{2, 18, 6},
@@ -184,7 +181,6 @@ func TestVersionList(t *testing.T) {
 	if !vl.Less(0, 1) {
 		t.Fatal("less version number should be marked as less")
 	}
-
 	sort.Sort(vl)
 	for i := 1; i < len(vl); i++ {
 		if vl[i-1].Cmp(&vl[i]) > 0 {
@@ -208,7 +204,7 @@ func TestFetchReleases(t *testing.T) {
 }
 
 func TestGetTagsFromGH(t *testing.T) {
-	tags, err := getGoVersions()
+	tags, err := GetGoVersions()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,10 +216,10 @@ func TestGetTagsFromGH(t *testing.T) {
 	}
 }
 
-func setup(conf *Config, t *testing.T) {
+func setup(conf *Manager, t *testing.T) {
 	t.Helper()
-	conf.base = t.TempDir()
-	err := os.MkdirAll(filepath.Join(conf.base, conf.versionDirName), 0775)
+	conf.Base = t.TempDir()
+	err := os.MkdirAll(filepath.Join(conf.Base, conf.VersionsDir), 0775)
 	if err != nil {
 		t.Error(err)
 	}
