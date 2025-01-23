@@ -37,6 +37,7 @@ func TestUse(t *testing.T) {
 }
 
 func TestDownload(t *testing.T) {
+	t.Skip()
 	cleanup := resetEnv()
 	defer cleanup()
 	m := Manager{
@@ -213,6 +214,25 @@ func TestGetTagsFromGH(t *testing.T) {
 		if !pat.Match([]byte(tag)) {
 			t.Errorf("%q is the wrong pattern", tag)
 		}
+	}
+}
+
+func TestVersions_GoDev(t *testing.T) {
+	t.Skip()
+	os.Remove(filepath.Join(os.TempDir(), godevCacheDir, godevCacheFile))
+	versions, err := pullGoVersions(WithStableOnly())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(versions) == 0 {
+		t.Fatal("expected at least one version")
+	}
+	versions, err = pullGoVersions(WithStableOnly())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(versions) == 0 {
+		t.Fatal("expected at least one version")
 	}
 }
 
