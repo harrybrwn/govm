@@ -1,0 +1,20 @@
+version: "2"
+linters:
+  # disable:
+  #   - errcheck
+  enable:
+    - misspell     # spelling
+    - tparallel    # check t.Parallel in tests (https://golangci-lint.run/docs/linters/configuration/#tparallel)
+    - bodyclose    # checks whether HTTP response body is closed
+    - unqueryvet   # check sql SELECT statements for performance issues
+    - rowserrcheck # checks whether Rows.Err of rows is checked
+  settings:
+    errcheck:
+      verbose: true # default is false
+      exclude-functions:
+        - io.Copy(*bytes.Buffer)
+        - io.Copy(os.Stdout)
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*os.File).Close
+        - (io.Closer).Close

@@ -10,7 +10,7 @@ func TestParseVersion(t *testing.T) {
 		in  string
 		exp Version
 	}
-	t.Run("Sucess", func(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
 		for _, tt := range []table{
 			{"4.5.6", Version{4, 5, 6, ""}},
 			{"100.9rc", Version{100, 9, 0, "rc"}},
