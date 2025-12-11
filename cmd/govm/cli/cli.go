@@ -1,14 +1,20 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/harrybrwn/govm"
+	"github.com/harrybrwn/x/stdio"
 )
 
 // Variables that are set using ldflags
@@ -43,8 +49,17 @@ func NewRootCmd() *cobra.Command {
 		newUninstallCmd(&conf),
 		newEnvCmd(&conf),
 	)
+	flags := c.PersistentFlags()
+	flags.BoolVar(&noPager, "no-pager", noPager, "disable automatic paging with $PAGER or $GOVM_PAGER")
+	flags.BoolVar(&noCache, "no-cache", noCache, "disable caching")
+	_ = flags.MarkHidden("no-cache")
 	return c
 }
+
+var (
+	noCache bool
+	noPager bool
+)
 
 func newUseCmd(conf *govm.Manager) *cobra.Command {
 	c := &cobra.Command{
@@ -74,7 +89,10 @@ func newUseCmd(conf *govm.Manager) *cobra.Command {
 					}
 					return err
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "using version from %q\n", conf.VersionFile)
+				_, err = fmt.Fprintf(cmd.OutOrStdout(), "using version from %q\n", conf.VersionFile)
+				if err != nil {
+					return err
+				}
 				toUse = v.String()
 			} else {
 				toUse = cleanVersionInput(args[0])
@@ -86,21 +104,41 @@ func newUseCmd(conf *govm.Manager) *cobra.Command {
 }
 
 func newListCmd(m *govm.Manager) *cobra.Command {
+	var all bool
 	c := &cobra.Command{
 		Use:     "list",
 		Short:   "List all the installed versions of go",
 		Aliases: []string{"ls"},
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			names, err := m.List()
-			if err != nil {
-				return err
+		RunE: func(cmd *cobra.Command, _ []string) (err error) {
+			var (
+				stdout   = cmd.OutOrStdout()
+				versions []govm.Version
+			)
+			if all {
+				vers, err := govm.GetGoVersions()
+				if err != nil {
+					return err
+				}
+				versions = make([]govm.Version, 0)
+				for _, version := range vers {
+					v, err := govm.ParseVersion(strings.TrimPrefix(version, "go"))
+					if err != nil {
+						return err
+					}
+					versions = append(versions, v)
+				}
+			} else {
+				versions, err = m.List()
+				if err != nil {
+					return err
+				}
 			}
-			for _, name := range names {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\n", name.String())
-			}
-			return nil
+			sort.Sort(govm.VersionList(versions))
+			slices.Reverse(versions)
+			return listVersions(versions, stdout, noPager)
 		},
 	}
+	c.Flags().BoolVarP(&all, "all", "a", all, "list all available versions")
 	return c
 }
 
@@ -164,12 +202,12 @@ func newEnvCmd(conf *govm.Manager) *cobra.Command {
 		Short:  "Print shell variables needed to for govm to manage your go versions.",
 		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintf(
+			_, err := fmt.Fprintf(
 				cmd.OutOrStdout(),
 				"export GOROOT=\"%s\"\n",
 				filepath.Join(conf.Base, conf.GoDir),
 			)
-			return nil
+			return err
 		},
 	}
 }
@@ -180,4 +218,30 @@ func cleanVersionInput(in string) string {
 	}
 	in = strings.TrimPrefix(in, "go")
 	return in
+}
+
+func listVersions(versions []govm.Version, stdout io.Writer, noPager bool) error {
+	pager := stdio.FindPager("GOVM_PAGER")
+	_, height, err := term.GetSize(0)
+	if err != nil {
+		return err
+	}
+	if len(versions) > height && len(pager) > 0 && !noPager {
+		var b bytes.Buffer
+		for _, v := range versions {
+			_, err = fmt.Fprintf(&b, "%s\n", v.String())
+			if err != nil {
+				return err
+			}
+		}
+		return stdio.Page(pager, stdout, &b)
+	} else {
+		for _, v := range versions {
+			_, err = fmt.Fprintf(stdout, "%s\n", v.String())
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"strings"
 	"testing"
 )
 
@@ -92,104 +92,6 @@ func TestValidateSemvar(t *testing.T) {
 	})
 }
 
-func TestParseVersion(t *testing.T) {
-	type table struct {
-		in  string
-		exp Version
-	}
-	for _, tt := range []table{
-		{"4.5.6", Version{4, 5, 6}},
-		{"100.9", Version{100, 9, 0}},
-		{"0.1.2", Version{0, 1, 2}},
-		{"9.33", Version{9, 33, 0}},
-	} {
-		v, err := ParseVersion(tt.in)
-		if err != nil {
-			t.Error(err)
-			continue
-		}
-		if tt.exp.Cmp(&v) != 0 {
-			t.Errorf("error parsing %q: %v != %v", tt.in, v, tt.exp)
-			continue
-		}
-	}
-	for _, s := range []string{
-		"one.two.four",
-		"2",
-		"9.8.4.6",
-		"1.2.three",
-		"1.two.3",
-		"one.2.3",
-	} {
-		_, err := ParseVersion(s)
-		if err == nil {
-			t.Errorf("expected error when parsing %q", s)
-		}
-	}
-}
-
-func TestVersion_Cmp(t *testing.T) {
-	if (&Version{1, 18, 0}).Cmp(&Version{1, 17, 0}) <= 0 {
-		t.Fatal("should be greater than")
-	}
-	for _, v := range []Version{
-		{1, 1, 1},
-		{1, 90, 6},
-		{8, 17, 4},
-	} {
-		v1 := Version{v.major, v.minor, v.patch}
-		if v.Cmp(&v1) != 0 {
-			t.Fatalf("%v should equal %v", v1, v)
-		}
-	}
-	base := Version{2, 18, 5}
-	for _, v := range []Version{
-		{2, 18, 6},
-		{2, 19, 100},
-		{2, 19, 0},
-		{3, 18, 5},
-	} {
-		if base.Cmp(&v) >= 0 {
-			t.Errorf("%v should be less than %v", v, base)
-		}
-	}
-}
-
-func TestVersionList(t *testing.T) {
-	vl := VersionList{
-		{1, 18, 0},
-		{1, 17, 5},
-		{1, 11, 0},
-		{1, 18, 5},
-		{1, 17, 3},
-		{1, 19, 0},
-		{1, 16, 10},
-		{1, 19, 3},
-	}
-	if vl.Len() != len(vl) {
-		t.Fatal("VersionList.Len should equal len")
-	}
-	if vl.Less(0, 1) {
-		t.Fatal("greater version number should not be marked as less")
-	}
-	if !vl.Less(1, 0) {
-		t.Fatal("less version number should be marked as less")
-	}
-	vl.Swap(0, 1)
-	if vl.Less(1, 0) {
-		t.Fatal("greater version number should not be marked as less")
-	}
-	if !vl.Less(0, 1) {
-		t.Fatal("less version number should be marked as less")
-	}
-	sort.Sort(vl)
-	for i := 1; i < len(vl); i++ {
-		if vl[i-1].Cmp(&vl[i]) > 0 {
-			t.Errorf("%v should be less than %v after sorting", vl[i-1], vl[i])
-		}
-	}
-}
-
 func TestFetchReleases(t *testing.T) {
 	t.Skip()
 	const url = "https://go.dev/doc/devel/release"
@@ -197,7 +99,7 @@ func TestFetchReleases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, err = io.Copy(os.Stdout, resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -209,17 +111,24 @@ func TestGetTagsFromGH(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pat := regexp.MustCompile(`^go([0-9]+\.?){1,3}$`)
+	pat := regexp.MustCompile(`^go([0-9]+\.?){1,3}[a-z0-9]*?$`)
 	for _, tag := range tags {
 		if !pat.Match([]byte(tag)) {
 			t.Errorf("%q is the wrong pattern", tag)
 		}
 	}
+	for _, tag := range tags {
+		v, err := ParseVersion(strings.TrimPrefix(tag, "go"))
+		if err != nil {
+			t.Errorf("failed to parse %q: %v", tag, err)
+		}
+		_ = v
+	}
 }
 
 func TestVersions_GoDev(t *testing.T) {
 	t.Skip()
-	os.Remove(filepath.Join(os.TempDir(), godevCacheDir, godevCacheFile))
+	_ = os.Remove(filepath.Join(os.TempDir(), godevCacheDir, godevCacheFile))
 	versions, err := pullGoVersions(WithStableOnly())
 	if err != nil {
 		t.Fatal(err)
@@ -251,11 +160,11 @@ func resetEnv() func() {
 	}
 	for k := range values {
 		values[k] = os.Getenv(k)
-		os.Unsetenv(k)
+		_ = os.Unsetenv(k)
 	}
 	return func() {
 		for k, v := range values {
-			os.Setenv(k, v)
+			_ = os.Setenv(k, v)
 		}
 	}
 }

@@ -13,23 +13,22 @@ import (
 
 var ErrInvalidVersion = errors.New("invalid version")
 
+func NewVersion(major, minor, patch int) Version {
+	return Version{major, minor, patch, ""}
+}
+
 type Version struct {
 	major int
 	minor int
 	patch int
+	pre   string
 }
 
 func ParseVersion(str string) (v Version, err error) {
 	l := strings.Split(str, ".")
 	switch len(l) {
 	case 3:
-		v.patch, err = parseInt(l[2])
-		if err != nil {
-			return
-		}
-		fallthrough
-	case 2:
-		v.major, err = parseInt(l[0])
+		v.patch, v.pre, err = parseVerNum(l[2])
 		if err != nil {
 			return
 		}
@@ -37,10 +36,19 @@ func ParseVersion(str string) (v Version, err error) {
 		if err != nil {
 			return
 		}
-		return v, err
+		v.major, err = parseInt(l[0])
+	case 2:
+		v.minor, v.pre, err = parseVerNum(l[1])
+		if err != nil {
+			return
+		}
+		v.major, err = parseInt(l[0])
+	case 1:
+		v.major, v.pre, err = parseVerNum(l[0])
 	default:
 		return v, ErrInvalidVersion
 	}
+	return
 }
 
 // Cmp will compare the two sematic version numbers.
@@ -48,15 +56,17 @@ func (v *Version) Cmp(x *Version) int {
 	if v.major == x.major {
 		if v.minor == x.minor {
 			if v.patch == x.patch {
-				return 0
+				if v.pre == x.pre {
+					return 0
+				} else if v.pre < x.pre {
+					return -1
+				}
 			} else if v.patch < x.patch {
 				return -1
 			}
-			return 1
 		} else if v.minor < x.minor {
 			return -1
 		}
-		return 1
 	} else if v.major < x.major {
 		return -1
 	}
@@ -64,10 +74,17 @@ func (v *Version) Cmp(x *Version) int {
 }
 
 func (v *Version) String() string {
+	format := "%d.%d"
+	args := []any{v.major, v.minor}
 	if v.patch > 0 {
-		return fmt.Sprintf("%d.%d.%d", v.major, v.minor, v.patch)
+		format += ".%d"
+		args = append(args, v.patch)
 	}
-	return fmt.Sprintf("%d.%d", v.major, v.minor)
+	if len(v.pre) > 0 {
+		format += "%s"
+		args = append(args, v.pre)
+	}
+	return fmt.Sprintf(format, args...)
 }
 
 // VersionList is a sortable list of semantic version numbers.
@@ -134,17 +151,6 @@ func CurrentVersion(dir string) (string, error) {
 	return os.Readlink(dir)
 }
 
-type tag struct {
-	Name    string `json:"name"`
-	Zipball string `json:"zipball_url"`
-	Tarball string `json:"tarball_url"`
-	Commit  struct {
-		SHA string `json:"sha"`
-		URL string `json:"url"`
-	} `json:"commit"`
-	NodeID string `json:"node_id"`
-}
-
 func cleanVersionInput(in string) string {
 	if in[0] == 'v' {
 		in = in[1:]
@@ -156,4 +162,18 @@ func cleanVersionInput(in string) string {
 func parseInt(s string) (int, error) {
 	n, err := strconv.ParseInt(s, 10, 32)
 	return int(n), err
+}
+
+func parseVerNum(s string) (int, string, error) {
+	for i, c := range s {
+		if c < '0' || c > '9' {
+			if i == 0 {
+				return 0, "", errors.New("invalid number")
+			}
+			n, err := strconv.ParseInt(s[:i], 10, 32)
+			return int(n), s[i:], err
+		}
+	}
+	n, err := strconv.ParseInt(s, 10, 32)
+	return int(n), "", err
 }

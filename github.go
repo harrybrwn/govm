@@ -29,7 +29,7 @@ const (
 	ghCacheFile = "govm/golang-go-tags.json"
 )
 
-func getTagsFromGithub() ([]ghTag, error) {
+func getTagsFromGithub() (tags []ghTag, err error) {
 	req := http.Request{
 		Method: "GET",
 		Host:   ghAPIHost,
@@ -46,12 +46,16 @@ func getTagsFromGithub() ([]ghTag, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() {
+		if e := res.Body.Close(); err == nil {
+			err = e
+		}
+	}()
 	full, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, err
 	}
-	tags := make([]ghTag, 0)
+	tags = make([]ghTag, 0)
 	if err = json.Unmarshal(full, &tags); err != nil {
 		return nil, err
 	}
@@ -63,7 +67,11 @@ func getTagsFromFileCache(filename string) ([]ghTag, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		if e := file.Close(); err == nil {
+			err = e
+		}
+	}()
 	full, err := io.ReadAll(file)
 	if err != nil {
 		return nil, err
@@ -75,12 +83,16 @@ func getTagsFromFileCache(filename string) ([]ghTag, error) {
 	return tags, nil
 }
 
-func writeGithubCache(filename string, tags []ghTag) error {
+func writeGithubCache(filename string, tags []ghTag) (err error) {
 	file, err := os.OpenFile(filename, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if e := file.Close(); err == nil {
+			err = e
+		}
+	}()
 	raw, err := json.Marshal(tags)
 	if err != nil {
 		return err
@@ -117,9 +129,7 @@ func GetGoVersions() ([]string, error) {
 	for _, tag := range allTags {
 		ref := strings.SplitN(tag.Ref, "/", 3)
 		r := ref[2]
-		if !strings.HasPrefix(r, "go") ||
-			strings.Contains(r, "rc") ||
-			strings.Contains(r, "beta") {
+		if !strings.HasPrefix(r, "go") {
 			continue
 		}
 		tags = append(tags, ref[2])
