@@ -74,12 +74,8 @@ func (v *Version) Cmp(x *Version) int {
 }
 
 func (v *Version) String() string {
-	format := "%d.%d"
-	args := []any{v.major, v.minor}
-	if v.patch > 0 {
-		format += ".%d"
-		args = append(args, v.patch)
-	}
+	format := "%d.%d.%d"
+	args := []any{v.major, v.minor, v.patch}
 	if len(v.pre) > 0 {
 		format += "%s"
 		args = append(args, v.pre)
@@ -119,15 +115,15 @@ func list(dir string) (VersionList, error) {
 	return versions, nil
 }
 
-func ReadVersionFile(filename string) (*Version, error) {
+func ReadVersionFile(filename string) (Version, error) {
 	f, err := os.Open(filename)
 	if err != nil {
-		return nil, err
+		return Version{}, err
 	}
 	defer f.Close()
 	raw, err := io.ReadAll(f)
 	if err != nil {
-		return nil, err
+		return Version{}, err
 	}
 	raw = bytes.Trim(raw, " \r\n\t")
 	if bytes.HasPrefix(raw, []byte("go")) {
@@ -135,9 +131,9 @@ func ReadVersionFile(filename string) (*Version, error) {
 	}
 	v, err := ParseVersion(string(raw))
 	if err != nil {
-		return nil, err
+		return Version{}, err
 	}
-	return &v, nil
+	return v, nil
 }
 
 func CurrentVersion(dir string) (string, error) {

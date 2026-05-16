@@ -20,7 +20,7 @@ func TestUse(t *testing.T) {
 		VersionsDir: "govm/go-versions",
 	}
 	setup(&m, t)
-	version := "1.0"
+	version := Version{major: 1}
 	_ = os.Mkdir(m.installation(version), 0755)
 	sym := filepath.Join(m.Base, m.GoDir)
 	err := m.Use(version)
@@ -46,7 +46,7 @@ func TestDownload(t *testing.T) {
 		VersionsDir: "govm/go-versions",
 	}
 	setup(&m, t)
-	version := "1.22.0"
+	version := Version{major: 1, minor: 22}
 	err := m.Download(io.Discard, version)
 	if err != nil {
 		t.Fatal(err)

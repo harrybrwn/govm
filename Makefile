@@ -25,6 +25,7 @@ completion: $(COMP)/bash/$(NAME) $(COMP)/zsh/_$(NAME) $(COMP)/fish/$(NAME).fish
 man: release/man
 
 install: $(BIN)
+	sudo $(RM) $$GOPATH/bin/govm
 	sudo install -m 4755 -o root $(BIN) $$GOPATH/bin
 
 uninstall:
@@ -38,7 +39,10 @@ install-to: $(BIN) completion
 lint:
 	golangci-lint run --disable unused
 
-.PHONY: build clean completion man install install-to lint
+test:
+	go test ./... -cover
+
+.PHONY: build clean completion man install install-to lint test
 
 $(BIN): $(SOURCE)
 	go build $(GOFLAGS) -o $@ ./cmd/$(NAME)

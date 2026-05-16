@@ -1,3 +1,4 @@
+// Package cli holds the cli commands.
 package cli
 
 import (
@@ -14,6 +15,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/harrybrwn/govm"
+	"github.com/harrybrwn/x/cobrautil"
 	"github.com/harrybrwn/x/stdio"
 )
 
@@ -49,6 +51,7 @@ func NewRootCmd() *cobra.Command {
 		newUninstallCmd(&conf),
 		newEnvCmd(&conf),
 	)
+	c.SetUsageTemplate(cobrautil.IndentedCobraUsageTemplate)
 	flags := c.PersistentFlags()
 	flags.BoolVar(&noPager, "no-pager", noPager, "disable automatic paging with $PAGER or $GOVM_PAGER")
 	flags.BoolVar(&noCache, "no-cache", noCache, "disable caching")
@@ -77,9 +80,12 @@ func newUseCmd(conf *govm.Manager) *cobra.Command {
 			return versionStrings, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var toUse string
+			var (
+				err error
+				v   govm.Version
+			)
 			if len(args) == 0 {
-				v, err := govm.ReadVersionFile(conf.VersionFile)
+				v, err = govm.ReadVersionFile(conf.VersionFile)
 				if err != nil {
 					if os.IsNotExist(err) {
 						return fmt.Errorf(
@@ -93,11 +99,13 @@ func newUseCmd(conf *govm.Manager) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				toUse = v.String()
 			} else {
-				toUse = cleanVersionInput(args[0])
+				v, err = govm.ParseVersion(cleanVersionInput(args[0]))
+				if err != nil {
+					return err
+				}
 			}
-			return conf.Use(toUse)
+			return conf.Use(v)
 		},
 	}
 	return c
@@ -150,8 +158,11 @@ func newDownloadCmd(conf *govm.Manager) *cobra.Command {
 		Aliases: []string{"dl"},
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			v := cleanVersionInput(args[0])
-			err := conf.Download(cmd.OutOrStdout(), v)
+			v, err := govm.ParseVersion(cleanVersionInput(args[0]))
+			if err != nil {
+				return err
+			}
+			err = conf.Download(cmd.OutOrStdout(), v)
 			if err != nil {
 				return err
 			}
@@ -179,7 +190,10 @@ func newRemoveCmd(conf *govm.Manager) *cobra.Command {
 		Short:   "Remove an installation.",
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			v := cleanVersionInput(args[0])
+			v, err := govm.ParseVersion(cleanVersionInput(args[0]))
+			if err != nil {
+				return err
+			}
 			return os.RemoveAll(conf.Installation(v))
 		},
 	}

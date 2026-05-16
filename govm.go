@@ -42,11 +42,11 @@ func NewDefaultManager() Manager {
 
 func (m *Manager) root() string { return filepath.Join(m.Base, m.GoDir) }
 
-func (m *Manager) installation(v string) string {
-	return filepath.Join(m.Base, m.VersionsDir, "go"+v)
+func (m *Manager) installation(v Version) string {
+	return filepath.Join(m.Base, m.VersionsDir, "go"+v.String())
 }
 
-func (m *Manager) Installation(v string) string {
+func (m *Manager) Installation(v Version) string {
 	return m.installation(v)
 }
 
@@ -62,11 +62,11 @@ func (m *Manager) List() (VersionList, error) {
 	return list(filepath.Join(m.Base, m.VersionsDir))
 }
 
-func (m *Manager) Download(stdout io.Writer, version string) error {
+func (m *Manager) Download(stdout io.Writer, version Version) error {
 	u, err := url.Parse(
 		fmt.Sprintf(
 			"https://golang.org/dl/go%s.%s-%s.tar.gz",
-			version,
+			version.String(),
 			runtime.GOOS,
 			runtime.GOARCH,
 		),
@@ -74,10 +74,10 @@ func (m *Manager) Download(stdout io.Writer, version string) error {
 	if err != nil {
 		return err
 	}
-	t := time.Now()
 	var (
 		c    http.Client
 		done = make(chan struct{})
+		t    = time.Now()
 	)
 	defer close(done)
 	go spin(done, stdout, "Downloading")
@@ -90,7 +90,7 @@ func (m *Manager) Download(stdout io.Writer, version string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("could not find version %q using %q", version, u.String())
+		return fmt.Errorf("could not find version %q using %q", version.String(), u.String())
 	}
 
 	ct := resp.Header.Get("Content-Type")
@@ -169,7 +169,7 @@ func (m *Manager) Uninstall() (err error) {
 	return nil
 }
 
-func (m *Manager) Use(version string) error {
+func (m *Manager) Use(version Version) error {
 	sym, ok := os.LookupEnv("GOROOT")
 	if !ok {
 		sym = filepath.Join(m.Base, m.GoDir)
@@ -197,17 +197,17 @@ func (m *Manager) Use(version string) error {
 		}
 	} else {
 		if stat.Mode()&os.ModeSymlink == 0 {
-			return fmt.Errorf("%q is not a symlink, please delete it and use go%s", sym, version)
+			return fmt.Errorf("%q is not a symlink, please delete it and use go%s", sym, version.String())
 		}
 	}
 	inst := m.installation(version)
 	if !exists(inst) {
-		return fmt.Errorf("version %q has not been downloaded", version)
+		return fmt.Errorf("version %q has not been downloaded", version.String())
 	}
 	if err = os.Remove(sym); err != nil {
 		return err
 	}
-	fmt.Printf("switching to version %s\n", version)
+	fmt.Printf("switching to version %s\n", version.String())
 	return os.Symlink(inst, sym)
 }
 
