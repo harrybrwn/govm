@@ -11,14 +11,14 @@ import (
 	"time"
 )
 
-// GoDevRelease is based on https://pkg.go.dev/golang.org/x/website/internal/dl
+// Release is based on https://pkg.go.dev/golang.org/x/website/internal/dl
 type Release struct {
 	Version string
 	Stable  bool
 	Files   []ReleaseFile
 }
 
-// GoDevVersionFile is based on https://pkg.go.dev/golang.org/x/website/internal/dl
+// ReleaseFile is based on https://pkg.go.dev/golang.org/x/website/internal/dl
 type ReleaseFile struct {
 	Filename       string `json:"filename"`
 	OS             string `json:"os"`
@@ -29,7 +29,7 @@ type ReleaseFile struct {
 	Kind           string `json:"kind"` // "archive", "installer", "source"
 }
 
-func (gdvf *ReleaseFile) FullUrl() string {
+func (gdvf *ReleaseFile) FullURL() string {
 	return fmt.Sprintf("https://go.dev/dl/%s", gdvf.Filename)
 }
 

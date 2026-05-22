@@ -3,8 +3,10 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,8 +17,10 @@ import (
 	"golang.org/x/term"
 
 	"github.com/harrybrwn/govm"
+	"github.com/harrybrwn/govm/cmd/govm/tui"
 	"github.com/harrybrwn/x/cobrautil"
 	"github.com/harrybrwn/x/stdio"
+	"github.com/harrybrwn/x/xiter"
 )
 
 // Variables that are set using ldflags
@@ -65,6 +69,7 @@ var (
 )
 
 func newUseCmd(conf *govm.Manager) *cobra.Command {
+	var noGovmFile, autoYes bool
 	c := &cobra.Command{
 		Use:   "use <version>",
 		Short: "Switch to a specified version of Go",
@@ -85,19 +90,20 @@ func newUseCmd(conf *govm.Manager) *cobra.Command {
 				v   govm.Version
 			)
 			if len(args) == 0 {
-				v, err = govm.ReadVersionFile(conf.VersionFile)
-				if err != nil {
-					if os.IsNotExist(err) {
-						return fmt.Errorf(
-							"give version number or use %q file",
-							conf.VersionFile,
-						)
+				if !noGovmFile && exists(conf.VersionFile) {
+					v, err = govm.ReadVersionFile(conf.VersionFile)
+					if err != nil {
+						return err
 					}
-					return err
-				}
-				_, err = fmt.Fprintf(cmd.OutOrStdout(), "using version from %q\n", conf.VersionFile)
-				if err != nil {
-					return err
+					_, err = fmt.Fprintf(cmd.OutOrStdout(), "using version from %q\n", conf.VersionFile)
+					if err != nil {
+						return err
+					}
+				} else {
+					v, err = askForInstalledVersionTUI(conf, autoYes)
+					if err != nil {
+						return err
+					}
 				}
 			} else {
 				v, err = govm.ParseVersion(cleanVersionInput(args[0]))
@@ -105,10 +111,21 @@ func newUseCmd(conf *govm.Manager) *cobra.Command {
 					return err
 				}
 			}
-			return conf.Use(v)
+			err = conf.Use(v)
+			if err != nil {
+				return fmt.Errorf("failed to set version %q: %w", v.String(), err)
+			}
+			return nil
 		},
 	}
+	c.Flags().BoolVar(&noGovmFile, "no-govm-file", noGovmFile, "don't read the version from ./.govm")
+	c.Flags().BoolVarP(&autoYes, "yes", "y", autoYes, "skip confirmation prompts")
 	return c
+}
+
+func exists(filename string) bool {
+	_, err := os.Stat(filename)
+	return !os.IsNotExist(err)
 }
 
 func newListCmd(m *govm.Manager) *cobra.Command {
@@ -156,9 +173,13 @@ func newDownloadCmd(conf *govm.Manager) *cobra.Command {
 		Use:     "download <version>",
 		Short:   "Download a different version of Go",
 		Aliases: []string{"dl"},
-		Args:    cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			v, err := govm.ParseVersion(cleanVersionInput(args[0]))
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			var v govm.Version
+			if len(args) == 0 {
+				v, err = askForDownloadableVersionTUI()
+			} else {
+				v, err = govm.ParseVersion(cleanVersionInput(args[0]))
+			}
 			if err != nil {
 				return err
 			}
@@ -258,4 +279,127 @@ func listVersions(versions []govm.Version, stdout io.Writer, noPager bool) error
 		}
 	}
 	return nil
+}
+
+func logToFile(filename string) (io.Closer, error) {
+	f, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+	h := slog.NewJSONHandler(f, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})
+	slog.SetDefault(slog.New(h))
+	return f, nil
+}
+
+func versionMenuOption(v govm.Version) tui.MenuOption[govm.Version] {
+	s := v.String()
+	return tui.MenuOption[govm.Version]{
+		ID:      s,
+		Display: fmt.Sprintf("v%s", s),
+		Value:   v,
+	}
+}
+
+func askForInstalledVersionTUI(conf *govm.Manager, autoConfirm bool) (v govm.Version, err error) {
+	logfile, err := logToFile(filepath.Join(cacheHome(), "govm-tui.log"))
+	if err != nil {
+		return v, err
+	}
+	defer logfile.Close()
+	versions, err := conf.List()
+	if err != nil {
+		return v, err
+	}
+	sort.Sort(govm.VersionList(versions))
+	slices.Reverse(versions)
+
+	menu := tui.Menu[govm.Version]{
+		Prompt: "Select a version:",
+		OnSelect: func(index int, option *tui.MenuOption[govm.Version]) {
+			v = option.Value
+		},
+		Options: slices.Collect(xiter.Map(xiter.Iter(versions), versionMenuOption)),
+		Keys:    tui.DefaultMenuKeys(),
+		Styles:  tui.DefaultMenuStyles(),
+		QuitCmd: tui.NextChainedModel,
+	}
+	confirm := tui.Confirm{
+		PromptFn: func() string {
+			return fmt.Sprintf("switch to %q?", v.String())
+		},
+		Yes:  autoConfirm,
+		Keys: tui.DefaultConfirmKeys(),
+	}
+	chain := tui.Chained{IgnoreProgress: true}
+	chain.Models = append(chain.Models, &menu)
+	if !autoConfirm {
+		chain.Models = append(chain.Models, &confirm)
+	}
+	err = tui.Run(&chain)
+	if err != nil {
+		return v, err
+	}
+	if !menu.Selected() {
+		return v, errors.New("no version selected")
+	}
+	if !confirm.Yes {
+		return v, errors.New("cancelling version selection")
+	}
+	return v, nil
+}
+
+func askForDownloadableVersionTUI() (v govm.Version, err error) {
+	logfile, err := logToFile(filepath.Join(cacheHome(), "govm-tui.log"))
+	if err != nil {
+		return v, err
+	}
+	defer logfile.Close()
+
+	rawversions, err := govm.GetGoVersions()
+	if err != nil {
+		return v, err
+	}
+	versions := make([]govm.Version, len(rawversions))
+	for i, rv := range rawversions {
+		rv = strings.TrimPrefix(rv, "go")
+		parsed, err := govm.ParseVersion(rv)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse version %q: %w", rv, err)
+		}
+		versions[i] = parsed
+	}
+	sort.Sort(govm.VersionList(versions))
+	slices.Reverse(versions)
+
+	menu := tui.Menu[govm.Version]{
+		Prompt: "Select a version:",
+		OnSelect: func(index int, option *tui.MenuOption[govm.Version]) {
+			v = option.Value
+		},
+		Options: slices.Collect(xiter.Map(xiter.Iter(versions), versionMenuOption)),
+		Keys:    tui.DefaultMenuKeys(),
+		Styles:  tui.DefaultMenuStyles(),
+	}
+	err = tui.Run(&menu)
+	if err != nil {
+		return v, err
+	}
+	if !menu.Selected() {
+		return v, errors.New("no version selected")
+	}
+	return v, nil
+}
+
+func cacheHome() string {
+	v, ok := os.LookupEnv("XDG_CACHE_HOME")
+	if ok {
+		return v
+	}
+	v, ok = os.LookupEnv("HOME")
+	if ok {
+		return filepath.Join(v, ".cache")
+	}
+	return os.TempDir()
 }

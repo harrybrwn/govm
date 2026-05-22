@@ -1,3 +1,4 @@
+// Package govm manages golang installation versions.
 package govm
 
 import (
