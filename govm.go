@@ -16,7 +16,8 @@ import (
 	"time"
 )
 
-//go:generate go run ./cmd/gen -man-dir release/man -nerdfonts
+//go:generate go run ./cmd/gen-pkgs
+//go:generate go run ./cmd/gen -man-dir release/man
 //go:generate go run ./cmd/gen -completion bash
 //go:generate go run ./cmd/gen -completion zsh
 //go:generate go run ./cmd/gen -completion fish

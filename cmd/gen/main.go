@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra/doc"
 
 	"github.com/harrybrwn/govm/internal/cli"
-	"github.com/harrybrwn/x/nerdfont"
 )
 
 func main() {
@@ -21,12 +20,10 @@ func main() {
 		stdout     = false
 		manDir     = "release/man"
 		completion = ""
-		genIcons   bool
 	)
 	flag.BoolVar(&stdout, "stdout", stdout, "write docs to stdout")
 	flag.StringVar(&completion, "completion", completion, "generate completion scripts")
 	flag.StringVar(&manDir, "man-dir", manDir, "directory to write man pages to")
-	flag.BoolVar(&genIcons, "nerdfonts", genIcons, "generate nerd-fonts icons package")
 	flag.Parse()
 	root := cli.NewRootCmd()
 	manHead := doc.GenManHeader{
@@ -47,28 +44,6 @@ func main() {
 			_ = os.MkdirAll(manDir, 0755)
 		}
 		err := doc.GenManTree(root, &manHead, manDir)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-	if genIcons {
-		_ = os.MkdirAll("internal/nerdfont", 0755)
-		f, err := os.OpenFile("internal/nerdfont/nerdfont.go", os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer f.Close()
-		metadata, glyphs, err := nerdfont.GetGlyphs()
-		if err != nil {
-			log.Fatal(err)
-		}
-		err = nerdfont.Generate(f, &nerdfont.GenerateTemplateData{
-			Package:         "nerdfont",
-			Glyphs:          glyphs,
-			Metadata:        *metadata,
-			MappingFunction: false,
-			GenList:         false,
-		})
 		if err != nil {
 			log.Fatal(err)
 		}
