@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -63,6 +64,7 @@ func getTagsFromGithub() (tags []ghTag, err error) {
 }
 
 func getTagsFromFileCache(filename string) ([]ghTag, error) {
+	slog.Info("reading github tags from cache")
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -101,7 +103,9 @@ func writeGithubCache(filename string, tags []ghTag) (err error) {
 	return err
 }
 
-func GetGoVersions() ([]string, error) {
+type GithubTag = ghTag
+
+func GetGitTags() ([]GithubTag, error) {
 	tmp := os.TempDir()
 	cacheFile := filepath.Join(tmp, ghCacheFile)
 	info, err := os.Stat(cacheFile)
@@ -124,6 +128,14 @@ func GetGoVersions() ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+	return allTags, nil
+}
+
+func GetGoVersions() ([]string, error) {
+	allTags, err := GetGitTags()
+	if err != nil {
+		return nil, err
 	}
 	tags := make([]string, 0, len(allTags)/2)
 	for _, tag := range allTags {

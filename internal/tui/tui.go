@@ -5,6 +5,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/harrybrwn/govm"
+	"github.com/harrybrwn/govm/internal/nerdfont"
 )
 
 func Run(model tea.Model) error {
@@ -26,7 +27,8 @@ func (p *Program) Run() error {
 
 type Keys struct {
 	Esc, Quit,
-	Up, Down key.Binding
+	Up, Down,
+	ToggleHelp key.Binding
 }
 
 func DefaultKeys() Keys {
@@ -40,10 +42,16 @@ func DefaultKeys() Keys {
 			key.WithHelp("q/ctrl+c", "quit"),
 		),
 		Up: key.NewBinding(
-			key.WithKeys("k"),
+			key.WithKeys("k", "up"),
+			key.WithHelp("k/"+nerdfont.WeatherDirectionUp, "up"),
 		),
 		Down: key.NewBinding(
-			key.WithKeys("j"),
+			key.WithKeys("j", "down"),
+			key.WithHelp("j/"+nerdfont.WeatherDirectionDown, "down"),
+		),
+		ToggleHelp: key.NewBinding(
+			key.WithKeys("?"),
+			key.WithHelp("?", "toggle help"),
 		),
 	}
 }
@@ -52,4 +60,12 @@ type Styles struct{}
 
 func DefaultStyles() Styles {
 	return Styles{}
+}
+
+func (k *Keys) ShortHelp() []key.Binding {
+	return []key.Binding{k.Esc, k.Quit, k.Up, k.Down, k.ToggleHelp}
+}
+
+func (k *Keys) FullHelp() [][]key.Binding {
+	return [][]key.Binding{}
 }

@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/harrybrwn/govm/internal/nerdfont"
 )
 
 type MenuOption[T any] struct {
@@ -29,6 +30,7 @@ type Menu[T any] struct {
 	// cursor      int
 	selected int // currently selected entry index
 	cursor   int // cursor's y-axis terminal cell position
+	help     *Help
 }
 
 type MenuKeys struct {
@@ -49,16 +51,28 @@ func DefaultMenuKeys() MenuKeys {
 		),
 		PageUp: key.NewBinding(
 			key.WithKeys("u", "ctrl+u"),
+			key.WithHelp("u", "page up"),
 		),
 		PageDown: key.NewBinding(
 			key.WithKeys("d", "ctrl+d"),
+			key.WithHelp("d", "page down"),
 		),
 		GotoTop: key.NewBinding(
 			key.WithKeys("g"),
+			key.WithHelp("g", "goto top"),
 		),
 		GotoBottom: key.NewBinding(
 			key.WithKeys("G"),
+			key.WithHelp("G", "goto bottom"),
 		),
+	}
+}
+
+func (k *MenuKeys) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.Quit, k.Esc, k.ToggleHelp, k.Select},
+		{k.Up, k.Down, k.PageUp, k.PageDown},
+		{k.GotoTop, k.GotoBottom},
 	}
 }
 
@@ -71,16 +85,19 @@ type MenuStyles struct {
 }
 
 func DefaultMenuStyles() MenuStyles {
+	selectedBg := lipgloss.ANSIColor(55)
 	return MenuStyles{
 		View: lipgloss.NewStyle().
 			Bold(false),
 		Cursor: lipgloss.NewStyle().
-			Background(lipgloss.Color("55")).
-			Foreground(lipgloss.Color("198")).
+			// Background(lipgloss.ANSIColor(55)).
+			Background(selectedBg).
+			Foreground(lipgloss.ANSIColor(198)).
 			Bold(true),
 		Selected: lipgloss.NewStyle().
+			// Background(lipgloss.Color("55")).
+			Background(selectedBg).
 			Foreground(lipgloss.Color("7")).
-			Background(lipgloss.Color("55")).
 			Bold(false),
 		Prompt: lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true),
 	}
@@ -99,6 +116,7 @@ func (m *Menu[T]) GetSelected() []*MenuOption[T] {
 }
 
 func (m *Menu[T]) Init() tea.Cmd {
+	m.help = NewHelp(&m.Keys)
 	logger := slog.With("model", fmt.Sprintf("%T", m))
 	logger.Info("init")
 	for i, o := range m.Options {
@@ -145,7 +163,7 @@ func (m *Menu[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 			m.selected = 0
 		case key.Matches(msg, m.Keys.GotoBottom):
-			m.cursor = m.getHeight() - 1 - m.promptHeight()
+			m.cursor = m.getHeight() - 1 - m.promptHeight() - m.help.Height()
 			m.selected = len(m.Options) - 1
 		case key.Matches(msg, m.Keys.Select):
 			slog.Info("menu selection", "cursor", m.cursor)
@@ -155,6 +173,8 @@ func (m *Menu[T]) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Options[m.selected].selected = true
 			m.hasSelected = true // mark the menu as having at least one selection
 			return m, m.QuitCmd
+		case key.Matches(msg, m.Keys.ToggleHelp):
+			m.help.Toggle()
 		}
 	}
 	return m, nil
@@ -167,7 +187,7 @@ func (m *Menu[T]) up(n int) {
 
 func (m *Menu[T]) down(n int) {
 	bh := m.borderHeight()
-	height := m.height - bh - m.promptHeight()
+	height := m.height - bh - m.promptHeight() - m.help.Height()
 	if bh == 0 {
 		height--
 	}
@@ -186,14 +206,15 @@ func (m *Menu[T]) View() tea.View {
 	}
 
 	var (
-		h     = m.getHeight() - lipgloss.Height(prompt)
+		h     = m.getHeight() - m.help.Height() - 1 - lipgloss.Height(prompt)
 		start = max(m.selected-m.cursor, 0)
 		end   = min(start+h, len(m.Options)-1)
 	)
 	for i := start; i <= end; i++ {
 		option := m.Options[i]
 		if i == m.selected {
-			b.WriteString(m.Styles.Cursor.Render(">"))
+			// b.WriteString(m.Styles.Cursor.Render(nerdfont.CodArrowRight))
+			b.WriteString(m.Styles.Cursor.Render(nerdfont.CodChevronRight))
 			b.WriteString(m.Styles.Selected.Render(" " + option.Display))
 		} else {
 			fmt.Fprintf(&b, "  %s", option.Display)
@@ -203,16 +224,15 @@ func (m *Menu[T]) View() tea.View {
 		}
 	}
 
-	view := tea.NewView(m.Styles.View.Render(b.String()))
+	view := tea.NewView(lipgloss.JoinVertical(
+		lipgloss.Top,
+		m.Styles.View.Render(b.String()),
+		m.help.View(),
+	))
 	if len(m.Options) > h {
 		view.AltScreen = true
 	}
 	return view
-}
-
-// height of the help message
-func (m *Menu[T]) helpHeight() int {
-	return 0
 }
 
 func (m *Menu[T]) promptHeight() int {
@@ -223,7 +243,7 @@ func (m *Menu[T]) promptHeight() int {
 }
 
 func (m *Menu[T]) getHeight() int {
-	return m.height - m.borderHeight() - m.helpHeight()
+	return m.height - m.borderHeight()
 }
 
 func (m *Menu[T]) borderHeight() int {

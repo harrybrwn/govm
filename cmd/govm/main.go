@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/harrybrwn/govm/cmd/govm/cli"
+	"github.com/harrybrwn/govm/internal/cli"
 )
 
 func main() {
